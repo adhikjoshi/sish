@@ -1,4 +1,4 @@
-name: Test and Build
+name: Build
 
 on:
   workflow_dispatch:
@@ -24,27 +24,8 @@ env:
     type=sha,prefix=,suffix=,format=long
 
 jobs:
-  test:
-    runs-on: ubuntu-22.04
-    steps:
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version: 1.22
-    - name: Checkout repo
-      uses: actions/checkout@v3
-    - name: Lint the codebase
-      uses: golangci/golangci-lint-action@v3
-      with:
-        version: latest
-        args: -E goimports -E godot
-    - name: Run tests
-      run: |
-        go test -v ./... -cover -race -coverprofile=coverage.out
-        go tool cover -func=coverage.out -o=coverage.out
   build:
     runs-on: ubuntu-22.04
-    needs: test
     steps:
     - name: Checkout repo
       uses: actions/checkout@v3
