@@ -29,7 +29,7 @@ import (
 	"github.com/ScaleFT/sshkeys"
 	"github.com/caddyserver/certmagic"
 	"github.com/jpillora/ipfilter"
-	//"github.com/logrusorgru/aurora"
+	// "github.com/logrusorgru/aurora".
 	"github.com/mikesmitty/edkey"
 	"github.com/pires/go-proxyproto"
 	"github.com/radovskyb/watcher"
@@ -40,7 +40,7 @@ import (
 
 const (
 	// sishDNSPrefix is the prefix used for DNS TXT records.
-	sishDNSPrefix = "sish="
+	//sishDNSPrefix = "sish=" .
 
 	// Prefix used for defining wildcard host matchers.
 	wildcardPrefix = "*."
@@ -616,43 +616,12 @@ func loadPrivateKey(passphrase string) ssh.Signer {
 
 // inList is used to scan whether or not something exists
 // in a slice of data.
-func inList(host string, bannedList []string) bool {
-	for _, v := range bannedList {
-		if strings.TrimSpace(v) == host {
-			return true
-		}
-	}
 
-	return false
-}
 
 // verifyDNS will verify that a specific domain/subdomain combo matches
 // the specific TXT entry that exists for the domain. It will check that the
 // publickey used for auth is at least included in the TXT records for the domain.
-func verifyDNS(addr string, sshConn *SSHConnection) (bool, string, error) {
-	if !viper.GetBool("verify-dns") || sshConn.SSHConn.Permissions == nil {
-		return false, "", nil
-	}
 
-	if _, ok := sshConn.SSHConn.Permissions.Extensions["pubKeyFingerprint"]; !ok {
-		return false, "", nil
-	}
-
-	records, err := net.LookupTXT(addr)
-
-	for _, v := range records {
-		if strings.HasPrefix(v, sishDNSPrefix) {
-			dnsPubKeyFingerprint := strings.TrimSpace(strings.TrimPrefix(v, sishDNSPrefix))
-
-			match := sshConn.SSHConn.Permissions.Extensions["pubKeyFingerprint"] == dnsPubKeyFingerprint
-			if match {
-				return match, dnsPubKeyFingerprint, err
-			}
-		}
-	}
-
-	return false, "", nil
-}
 
 // GetOpenPort returns open ports that can be bound. It verifies the host to
 // bind the port to and attempts to listen to the port to ensure it is open.
