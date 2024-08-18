@@ -61,6 +61,7 @@ type HTTPHolder struct {
 	SSHConnections *syncmap.Map[string, *SSHConnection]
 	Forward        *forward.Forwarder
 	Balancer       *roundrobin.RoundRobin
+	SSHConn        *SSHConnection // Add this line
 }
 
 // AliasHolder holds alias and connection info.
@@ -68,6 +69,7 @@ type AliasHolder struct {
 	AliasHost      string
 	SSHConnections *syncmap.Map[string, *SSHConnection]
 	Balancer       *roundrobin.RoundRobin
+	SSHConn        *SSHConnection // Add this line
 }
 
 // TCPHolder holds proxy and connection info.
@@ -78,6 +80,7 @@ type TCPHolder struct {
 	SNIProxy       bool
 	Balancers      *syncmap.Map[string, *roundrobin.RoundRobin]
 	NoHandle       bool
+	SSHConn        *SSHConnection // Add this line
 }
 
 // Handle will copy connections from one handler to a roundrobin server.

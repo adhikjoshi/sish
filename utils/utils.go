@@ -29,7 +29,7 @@ import (
 	"github.com/ScaleFT/sshkeys"
 	"github.com/caddyserver/certmagic"
 	"github.com/jpillora/ipfilter"
-	"github.com/logrusorgru/aurora"
+	//"github.com/logrusorgru/aurora"
 	"github.com/mikesmitty/edkey"
 	"github.com/pires/go-proxyproto"
 	"github.com/radovskyb/watcher"
@@ -662,7 +662,7 @@ func GetOpenPort(addr string, port uint32, state *State, sshConn *SSHConnection,
 		var tH *TCPHolder
 		var bindErr error
 
-		first := true
+		//first := true
 		bindPort := port
 		bindAddr := addr
 		listenAddr := ""
@@ -675,29 +675,27 @@ func GetOpenPort(addr string, port uint32, state *State, sshConn *SSHConnection,
 			bindAddr = viper.GetString("tcp-address")
 		}
 
-		reportUnavailable := func(unavailable bool) {
-			if first && unavailable {
-				extra := " Assigning a random port."
-				if viper.GetBool("force-requested-ports") {
-					extra = ""
-
-					bindErr = fmt.Errorf("unable to bind requested port")
-				}
-
-				sshConn.SendMessage(aurora.Sprintf("The TCP port %d is unavailable.%s", aurora.Red(bindPort), extra), true)
-			}
-		}
-
 		checkPort := func(checkerPort uint32) bool {
 			if bindErr != nil {
 				return false
 			}
 
 			listenAddr = GenerateAddress(bindAddr, bindPort)
-			checkedPort, err := CheckPort(checkerPort, viper.GetString("port-bind-range"))
-			_, ok := state.TCPListeners.Load(listenAddr)
+			_ , ok := state.TCPListeners.Load(listenAddr)
+			// use holder.SSHConn to check if the port is already in use
+			
 
-			if err == nil && (!viper.GetBool("tcp-load-balancer") || (viper.GetBool("tcp-load-balancer") && !ok) || (sniProxyEnabled && !ok)) {
+			// Check if the port is already in use
+			// if ok {
+			// 	// Force close the existing connection
+			// 	log.Println("bindAddr "+bindAddr + " is already in use, closing connection from GetOpenPort")
+			// 	oldSSHConn := holder.SSHConn
+			// 	oldSSHConn.SendMessage("Connection replaced by a new connection.", true)
+			// 	oldSSHConn.CleanUp(state)
+			// }
+
+			checkedPort, err := CheckPort(checkerPort, viper.GetString("port-bind-range"))
+			if err == nil {
 				ln, listenErr := Listen(listenAddr)
 				if listenErr != nil {
 					err = listenErr
@@ -706,9 +704,7 @@ func GetOpenPort(addr string, port uint32, state *State, sshConn *SSHConnection,
 				}
 			}
 
-			if viper.GetBool("bind-random-ports") || !first || err != nil {
-				reportUnavailable(true)
-
+			if err != nil {
 				if viper.GetString("port-bind-range") != "" {
 					bindPort = GetRandomPortInRange(bindAddr, viper.GetString("port-bind-range"))
 				} else {
@@ -719,15 +715,8 @@ func GetOpenPort(addr string, port uint32, state *State, sshConn *SSHConnection,
 			}
 
 			listenAddr = GenerateAddress(bindAddr, bindPort)
-			holder, ok := state.TCPListeners.Load(listenAddr)
-			if ok && (!sniProxyEnabled && viper.GetBool("tcp-load-balancer") || (sniProxyEnabled && viper.GetBool("sni-load-balancer"))) {
-				tH = holder
-				ok = false
-			}
 
-			reportUnavailable(ok)
-
-			first = false
+			//first = false
 			return ok
 		}
 
@@ -743,7 +732,7 @@ func GetOpenPort(addr string, port uint32, state *State, sshConn *SSHConnection,
 // GetOpenSNIHost returns an open SNI host or a random host if that one is unavailable.
 func GetOpenSNIHost(addr string, state *State, sshConn *SSHConnection, tH *TCPHolder) (string, error) {
 	getUnusedHost := func() (string, error) {
-		first := true
+		//first := true
 		hostExtension := ""
 
 		if viper.GetBool("append-user-to-subdomain") {
@@ -752,78 +741,29 @@ func GetOpenSNIHost(addr string, state *State, sshConn *SSHConnection, tH *TCPHo
 
 		var bindErr error
 
-		dnsMatch, _, err := verifyDNS(addr, sshConn)
-		if err != nil && viper.GetBool("debug") {
-			log.Println("Error looking up txt records for domain:", addr)
-		}
-
 		proposedHost := fmt.Sprintf("%s%s.%s", addr, hostExtension, viper.GetString("domain"))
-		domainParts := strings.Join(strings.Split(addr, ".")[1:], ".")
-
-		if dnsMatch || (viper.GetBool("bind-any-host") && strings.Contains(addr, ".")) || inList(domainParts, strings.FieldsFunc(viper.GetString("bind-hosts"), CommaSplitFields)) {
-			proposedHost = addr
-
-			if proposedHost == fmt.Sprintf(".%s", viper.GetString("domain")) {
-				proposedHost = viper.GetString("domain")
-			}
-		}
-
-		if viper.GetBool("bind-root-domain") && proposedHost == fmt.Sprintf(".%s", viper.GetString("domain")) {
-			proposedHost = viper.GetString("domain")
-		}
 
 		host := strings.ToLower(proposedHost)
-
-		getRandomHost := func() string {
-			return strings.ToLower(RandStringBytesMaskImprSrc(viper.GetInt("bind-random-subdomains-length")) + "." + viper.GetString("domain"))
-		}
-
-		reportUnavailable := func(unavailable bool) {
-			if first && unavailable {
-				extra := " Assigning a random subdomain."
-				if viper.GetBool("force-requested-subdomains") {
-					extra = ""
-					bindErr = fmt.Errorf("unable to bind requested subdomain")
-				}
-
-				sshConn.SendMessage(aurora.Sprintf("The subdomain %s is unavailable.%s", aurora.Red(host), extra), true)
-			}
-		}
 
 		checkHost := func() bool {
 			if bindErr != nil {
 				return false
 			}
 
-			if viper.GetBool("bind-random-subdomains") || !first || inList(host, bannedSubdomainList) {
-				reportUnavailable(true)
-				host = getRandomHost()
-			}
-
-			if !viper.GetBool("bind-wildcards") && strings.HasPrefix(host, wildcardPrefix) {
-				reportUnavailable(true)
-				host = getRandomHost()
-			}
-
-			ok := false
-
 			tH.Balancers.Range(func(strKey string, value *roundrobin.RoundRobin) bool {
-				if strKey == host {
-					ok = true
-					return false
-				}
-
+				// if strKey == host {
+				// 	// Force close the existing connection
+				// 	log.Println("host "+host + " is already in use, closing connection from GetOpenSNIHost")
+				// 	oldSSHConn := tH.SSHConn
+				// 	oldSSHConn.SendMessage("Connection replaced by a new connection.", true)
+				// 	oldSSHConn.CleanUp(state)
+				// 	return false
+				// }
 				return true
 			})
 
-			if ok && viper.GetBool("sni-load-balancer") {
-				ok = false
-			}
-
-			reportUnavailable(ok)
-
-			first = false
-			return ok
+			//first = false
+			return true
 		}
 
 		for checkHost() {
@@ -841,31 +781,21 @@ func GetOpenHost(addr string, state *State, sshConn *SSHConnection) (*url.URL, *
 	getUnusedHost := func() (*url.URL, *HTTPHolder) {
 		var pH *HTTPHolder
 
-		first := true
 		hostExtension := ""
 
 		if viper.GetBool("append-user-to-subdomain") {
 			hostExtension = viper.GetString("append-user-to-subdomain-separator") + sshConn.SSHConn.User()
 		}
 
-		var username string
-		var password string
-		var path string
-
-		var bindErr error
+		var username, password, path string
 
 		if strings.Contains(addr, "@") {
 			hostParts := strings.SplitN(addr, "@", 2)
-
 			addr = hostParts[1]
 
 			if viper.GetBool("bind-http-auth") && len(hostParts[0]) > 0 {
 				authParts := strings.Split(hostParts[0], ":")
-
-				if len(authParts) > 0 {
-					username = authParts[0]
-				}
-
+				username = authParts[0]
 				if len(authParts) > 1 {
 					password = authParts[1]
 				}
@@ -874,98 +804,29 @@ func GetOpenHost(addr string, state *State, sshConn *SSHConnection) (*url.URL, *
 
 		if strings.Contains(addr, "/") {
 			pathParts := strings.SplitN(addr, "/", 2)
-
 			if viper.GetBool("bind-http-path") && len(pathParts[1]) > 0 {
 				path = fmt.Sprintf("/%s", pathParts[1])
 			}
-
 			addr = pathParts[0]
 		}
 
-		dnsMatch, _, err := verifyDNS(addr, sshConn)
-		if err != nil && viper.GetBool("debug") {
-			log.Println("Error looking up txt records for domain:", addr)
-		}
-
 		proposedHost := fmt.Sprintf("%s%s.%s", addr, hostExtension, viper.GetString("domain"))
-		domainParts := strings.Join(strings.Split(addr, ".")[1:], ".")
-
-		if dnsMatch || (viper.GetBool("bind-any-host") && strings.Contains(addr, ".")) || inList(domainParts, strings.FieldsFunc(viper.GetString("bind-hosts"), CommaSplitFields)) {
-			proposedHost = addr
-
-			if proposedHost == fmt.Sprintf(".%s", viper.GetString("domain")) {
-				proposedHost = viper.GetString("domain")
-			}
-		}
-
-		if viper.GetBool("bind-root-domain") && proposedHost == fmt.Sprintf(".%s", viper.GetString("domain")) {
-			proposedHost = viper.GetString("domain")
-		}
-
 		host := strings.ToLower(proposedHost)
 
-		getRandomHost := func() string {
-			return strings.ToLower(RandStringBytesMaskImprSrc(viper.GetInt("bind-random-subdomains-length")) + "." + viper.GetString("domain"))
-		}
-
-		reportUnavailable := func(unavailable bool) {
-			if first && unavailable {
-				extra := " Assigning a random subdomain."
-				if viper.GetBool("force-requested-subdomains") {
-					extra = ""
-					bindErr = fmt.Errorf("unable to bind requested subdomain")
-				}
-
-				sshConn.SendMessage(aurora.Sprintf("The subdomain %s is unavailable.%s", aurora.Red(host), extra), true)
-			}
-		}
-
 		checkHost := func() bool {
-			if bindErr != nil {
-				return false
-			}
+			//holder, ok := state.HTTPListeners.Load(host)
+			// if ok {
+			// 	log.Println("host "+host + " is already in use, closing connection from GetOpenHost")
+			// 	// Force close the existing connection
+			// 	oldSSHConn := holder.SSHConn
+			// 	oldSSHConn.SendMessage("Connection replaced by a new connection.", true)
+			// 	oldSSHConn.CleanUp(state)
+			// }
 
-			if viper.GetBool("bind-random-subdomains") || !first || inList(host, bannedSubdomainList) {
-				reportUnavailable(true)
-				host = getRandomHost()
-			}
-
-			if !viper.GetBool("bind-wildcards") && strings.HasPrefix(host, wildcardPrefix) {
-				reportUnavailable(true)
-				host = getRandomHost()
-			}
-
-			var holder *HTTPHolder
-			ok := false
-
-			state.HTTPListeners.Range(func(key string, locationListener *HTTPHolder) bool {
-				parsedPassword, _ := locationListener.HTTPUrl.User.Password()
-
-				if host == locationListener.HTTPUrl.Host && strings.HasPrefix(path, locationListener.HTTPUrl.Path) && username == locationListener.HTTPUrl.User.Username() && password == parsedPassword {
-					ok = true
-					holder = locationListener
-					return false
-				}
-
-				return true
-			})
-
-			if ok && viper.GetBool("http-load-balancer") {
-				pH = holder
-				ok = false
-			}
-
-			reportUnavailable(ok)
-
-			first = false
-			return ok
+			return false
 		}
 
 		for checkHost() {
-		}
-
-		if bindErr != nil {
-			return nil, nil
 		}
 
 		hostUrl := &url.URL{
@@ -987,46 +848,19 @@ func GetOpenAlias(addr string, port string, state *State, sshConn *SSHConnection
 		var aH *AliasHolder
 		var bindErr error
 
-		first := true
 		alias := fmt.Sprintf("%s:%s", strings.ToLower(addr), port)
 
-		getRandomAlias := func() string {
-			return fmt.Sprintf("%s:%s", strings.ToLower(RandStringBytesMaskImprSrc(viper.GetInt("bind-random-aliases-length"))), port)
-		}
-
-		reportUnavailable := func(unavailable bool) {
-			if first && unavailable {
-				extra := " Assigning a random alias."
-				if viper.GetBool("force-requested-aliases") {
-					extra = ""
-
-					bindErr = fmt.Errorf("unable to bind requested alias")
-				}
-
-				sshConn.SendMessage(aurora.Sprintf("The alias %s is unavailable.%s", aurora.Red(alias), extra), true)
-			}
-		}
-
 		checkAlias := func() bool {
-			if bindErr != nil {
-				return false
-			}
+			//holder, ok := state.AliasListeners.Load(alias)
+			// if ok {
+			// 	// Force close the existing connection
+			// 	log.Println("alias "+alias + " is already in use, closing connection from GetOpenAlias")
+			// 	oldSSHConn := holder.SSHConn
+			// 	oldSSHConn.SendMessage("Connection replaced by a new connection.", true)
+			// 	oldSSHConn.CleanUp(state)
+			// }
 
-			if viper.GetBool("bind-random-aliases") || !first || inList(alias, bannedAliasList) {
-				reportUnavailable(true)
-				alias = getRandomAlias()
-			}
-
-			holder, ok := state.AliasListeners.Load(alias)
-			if ok && viper.GetBool("alias-load-balancer") {
-				aH = holder
-				ok = false
-			}
-
-			reportUnavailable(ok)
-
-			first = false
-			return ok
+			return false
 		}
 
 		for checkAlias() {
