@@ -47,7 +47,9 @@ func ResponseModifier(state *utils.State, hostname string, reqBody []byte, c *gi
 			var err error
 			var resBody []byte
 
-			if viper.GetInt64("service-console-max-content-length") == -1 || (viper.GetInt64("service-console-max-content-length") > -1 && response.ContentLength > -1 && response.ContentLength < viper.GetInt64("service-console-max-content-length")) {
+			isStreaming := strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") || strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "application/x-ndjson")
+
+			if !isStreaming && (viper.GetInt64("service-console-max-content-length") == -1 || (viper.GetInt64("service-console-max-content-length") > -1 && response.ContentLength > -1 && response.ContentLength < viper.GetInt64("service-console-max-content-length"))) {
 				resBody, err = io.ReadAll(response.Body)
 				if err != nil {
 					log.Println("Error reading response body:", err)
@@ -69,6 +71,8 @@ func ResponseModifier(state *utils.State, hostname string, reqBody []byte, c *gi
 						log.Println("Error reading gzip data:", err)
 					}
 				}
+			} else if isStreaming {
+				resBody = []byte("{\"_sish_status\": false, \"_sish_message\": \"response body streaming\"}")
 			} else {
 				resBody = []byte("{\"_sish_status\": false, \"_sish_message\": \"response body size exceeds limit for service console\"}")
 			}
